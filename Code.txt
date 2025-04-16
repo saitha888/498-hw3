@@ -43,14 +43,13 @@ if __name__ == '__main__':
     csv_file = 'Electric_Vehicle_Population_Data.csv'
     load_data_to_bigtable(csv_file)
 
-
 ### FLASK CODE
 
+import ast
 from flask import Flask
 from google.cloud import bigtable
 
 app = Flask(__name__)
-
 INSTANCE_ID = "ev-bigtable"
 TABLE_ID = "ev-population"
 
@@ -62,72 +61,80 @@ def get_table():
 @app.route("/rows")
 def rows():
     table = get_table()
-    count = 0
+    c = 0
     for _ in table.read_rows():
-        count += 1
-    return str(count)
+        c += 1
+    return str(c)
 
 @app.route("/Best-BMW")
 def best_bmw():
     table = get_table()
-    count = 0
+    c = 0
     for row in table.read_rows():
-        cells = row.cells.get("ev_info", {})
-        if "make" in cells and "electric range" in cells:
-            make_val = cells["make"][0].value.decode().strip()
-            if make_val == "BMW":
-                try:
-                    electric_range = int(cells["electric range"][0].value.decode())
-                    if electric_range > 100:
-                        count += 1
-                except:
-                    pass
-    return str(count)
+        if "ev_info" in row.cells and "ev_info" in row.cells["ev_info"]:
+            raw = row.cells["ev_info"]["ev_info"][0].value.decode("utf-8")
+            data = ast.literal_eval(raw)
+            make_val = data.get("make", "").strip().upper()
+            rng_val = data.get("electric range", "").replace(",", "")
+            try:
+                if make_val == "BMW" and float(rng_val) > 100:
+                    c += 1
+            except:
+                pass
+    return str(c)
 
 @app.route("/tesla-owners")
 def tesla_owners():
     table = get_table()
-    count = 0
+    c = 0
     for row in table.read_rows():
-        cells = row.cells.get("ev_info", {})
-        if "make" in cells and "city" in cells:
-            make_val = cells["make"][0].value.decode().strip()
-            city_val = cells["city"][0].value.decode().strip()
-            if make_val == "Tesla" and city_val == "Seattle":
-                count += 1
-    return str(count)
+        if "ev_info" in row.cells and "ev_info" in row.cells["ev_info"]:
+            raw = row.cells["ev_info"]["ev_info"][0].value.decode("utf-8")
+            data = ast.literal_eval(raw)
+            make_val = data.get("make", "").strip().upper()
+            city_val = data.get("city", "").strip().upper()
+            if make_val == "TESLA" and city_val == "SEATTLE":
+                c += 1
+    return str(c)
 
 @app.route("/update")
 def update():
     table = get_table()
-    row_key = "257246118".encode()
-    bt_row = table.direct_row(row_key)
-    bt_row.set_cell("ev_info", "electric range", "200")
-    bt_row.commit()
+    row_key = "257246118".encode("utf-8")
+    stored = table.read_row(row_key)
+    if stored and "ev_info" in stored.cells and "ev_info" in stored.cells["ev_info"]:
+        raw = stored.cells["ev_info"]["ev_info"][0].value.decode("utf-8")
+        data = ast.literal_eval(raw)
+        data["electric range"] = "200"
+        new_val = str(data)
+        r = table.direct_row(row_key)
+        r.set_cell("ev_info", "ev_info", new_val.encode("utf-8"))
+        r.commit()
     return '"Success"'
 
 @app.route("/delete")
 def delete():
     table = get_table()
-    rows_to_delete = []
+    to_delete = []
     for row in table.read_rows():
-        cells = row.cells.get("ev_info", {})
-        if "model year" in cells:
+        if "ev_info" in row.cells and "ev_info" in row.cells["ev_info"]:
+            raw = row.cells["ev_info"]["ev_info"][0].value.decode("utf-8")
+            data = ast.literal_eval(raw)
             try:
-                model_year = int(cells["model year"][0].value.decode())
-                if model_year < 2014:
-                    rows_to_delete.append(row.row_key)
+                if int(data.get("model year", "0")) < 2014:
+                    to_delete.append(row.row_key)
             except:
-                continue
-    for row_key in rows_to_delete:
-        r = table.direct_row(row_key)
+                pass
+    for rk in to_delete:
+        r = table.direct_row(rk)
         r.delete()
         r.commit()
-    count = 0
+    c = 0
     for _ in table.read_rows():
-        count += 1
-    return str(count)
+        c += 1
+    return str(c)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=80)
+
 
