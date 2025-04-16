@@ -1,0 +1,133 @@
+###SCRIPT TO LOAD DATA INTO TABLE
+
+import pandas as pd
+from google.cloud import bigtable
+
+def load_data_to_bigtable(csv_file_path):
+    try:
+        df = pd.read_csv(csv_file_path, usecols=['DOL Vehicle ID', 'Make', 'Model', 'Model Year', 'Electric Range', 'City', 'County'])
+    except Exception as e:
+        print(f"Error reading CSV: {e}")
+        return
+
+    client = bigtable.Client(admin=True)
+    instance = client.instance('ev-bigtable')
+    table = instance.table('ev-population')
+
+    batch = []
+    batch_size = 100
+    for index, row in df.iterrows():
+        row_key = str(row['DOL Vehicle ID']).encode('utf-8')
+        bt_row = table.direct_row(row_key)
+        
+        bt_row.set_cell('ev_info', 'make', str(row['Make']).encode('utf-8'))
+        bt_row.set_cell('ev_info', 'model', str(row['Model']).encode('utf-8'))
+        bt_row.set_cell('ev_info', 'model year', str(row['Model Year']).encode('utf-8'))
+        bt_row.set_cell('ev_info', 'electric range', str(row['Electric Range']).encode('utf-8'))
+        bt_row.set_cell('ev_info', 'city', str(row['City']).encode('utf-8'))
+        bt_row.set_cell('ev_info', 'county', str(row['County']).encode('utf-8'))
+        
+        batch.append(bt_row)
+        
+        if len(batch) >= batch_size:
+            table.mutate_rows(batch)
+            print(f"Uploaded {index+1} rows...")
+            batch = []
+    
+    if batch:
+        table.mutate_rows(batch)
+    
+    print("Data loaded successfully into Bigtable.")
+
+if __name__ == '__main__':
+    csv_file = 'Electric_Vehicle_Population_Data.csv'
+    load_data_to_bigtable(csv_file)
+
+
+### FLASK CODE
+
+from flask import Flask
+from google.cloud import bigtable
+
+app = Flask(__name__)
+
+INSTANCE_ID = "ev-bigtable"
+TABLE_ID = "ev-population"
+
+def get_table():
+    client = bigtable.Client(admin=True)
+    instance = client.instance(INSTANCE_ID)
+    return instance.table(TABLE_ID)
+
+@app.route("/rows")
+def rows():
+    table = get_table()
+    count = 0
+    for _ in table.read_rows():
+        count += 1
+    return str(count)
+
+@app.route("/Best-BMW")
+def best_bmw():
+    table = get_table()
+    count = 0
+    for row in table.read_rows():
+        cells = row.cells.get("ev_info", {})
+        if "make" in cells and "electric range" in cells:
+            make_val = cells["make"][0].value.decode().strip()
+            if make_val == "BMW":
+                try:
+                    electric_range = int(cells["electric range"][0].value.decode())
+                    if electric_range > 100:
+                        count += 1
+                except:
+                    pass
+    return str(count)
+
+@app.route("/tesla-owners")
+def tesla_owners():
+    table = get_table()
+    count = 0
+    for row in table.read_rows():
+        cells = row.cells.get("ev_info", {})
+        if "make" in cells and "city" in cells:
+            make_val = cells["make"][0].value.decode().strip()
+            city_val = cells["city"][0].value.decode().strip()
+            if make_val == "Tesla" and city_val == "Seattle":
+                count += 1
+    return str(count)
+
+@app.route("/update")
+def update():
+    table = get_table()
+    row_key = "257246118".encode()
+    bt_row = table.direct_row(row_key)
+    bt_row.set_cell("ev_info", "electric range", "200")
+    bt_row.commit()
+    return '"Success"'
+
+@app.route("/delete")
+def delete():
+    table = get_table()
+    rows_to_delete = []
+    for row in table.read_rows():
+        cells = row.cells.get("ev_info", {})
+        if "model year" in cells:
+            try:
+                model_year = int(cells["model year"][0].value.decode())
+                if model_year < 2014:
+                    rows_to_delete.append(row.row_key)
+            except:
+                continue
+    for row_key in rows_to_delete:
+        r = table.direct_row(row_key)
+        r.delete()
+        r.commit()
+    count = 0
+    for _ in table.read_rows():
+        count += 1
+    return str(count)
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8080)
+
