@@ -100,7 +100,7 @@ def update():
     bt_row = table.direct_row(b"257246118")
     bt_row.set_cell("ev_info", "electric range", b"200")
     bt_row.commit()
-    return '"Success"'
+    return "Success"
 
 @app.route("/delete")
 def delete():
