@@ -72,9 +72,9 @@ def best_bmw():
     for row in table.read_rows():
         cells = row.cells.get("ev_info", {})
         if b"make" in cells and b"electric range" in cells:
-            make_val = cells[b"make"][0].value.decode("utf-8").strip().upper()
+            make_val = cells[b"make"][0].value.decode("utf-8")
             try:
-                rng = float(cells[b"electric range"][0].value.decode("utf-8").strip())
+                rng = float(cells[b"electric range"][0].value.decode("utf-8")
             except:
                 continue
             if make_val == "BMW" and rng > 100:
@@ -88,8 +88,8 @@ def tesla_owners():
     for row in table.read_rows():
         cells = row.cells.get("ev_info", {})
         if b"make" in cells and b"city" in cells:
-            make_val = cells[b"make"][0].value.decode("utf-8").strip().upper()
-            city_val = cells[b"city"][0].value.decode("utf-8").strip().upper()
+            make_val = cells[b"make"][0].value.decode("utf-8")
+            city_val = cells[b"city"][0].value.decode("utf-8")
             if make_val == "TESLA" and city_val == "SEATTLE":
                 count += 1
     return str(count)
@@ -110,7 +110,7 @@ def delete():
         cells = row.cells.get("ev_info", {})
         if b"model year" in cells:
             try:
-                year = int(cells[b"model year"][0].value.decode("utf-8").strip())
+                year = int(cells[b"model year"][0].value.decode("utf-8")
             except:
                 continue
             if year < 2014:
