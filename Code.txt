@@ -45,7 +45,6 @@ if __name__ == '__main__':
 
 ### FLASK CODE
 
-import ast
 from flask import Flask
 from google.cloud import bigtable
 
@@ -61,55 +60,46 @@ def get_table():
 @app.route("/rows")
 def rows():
     table = get_table()
-    c = 0
+    count = 0
     for _ in table.read_rows():
-        c += 1
-    return str(c)
+        count += 1
+    return str(count)
 
 @app.route("/Best-BMW")
 def best_bmw():
     table = get_table()
-    c = 0
+    count = 0
     for row in table.read_rows():
-        if "ev_info" in row.cells and "ev_info" in row.cells["ev_info"]:
-            raw = row.cells["ev_info"]["ev_info"][0].value.decode("utf-8")
-            data = ast.literal_eval(raw)
-            make_val = data.get("make", "").strip().upper()
-            rng_val = data.get("electric range", "").replace(",", "")
+        cells = row.cells.get("ev_info", {})
+        if b"make" in cells and b"electric range" in cells:
+            make_val = cells[b"make"][0].value.decode("utf-8").strip().upper()
             try:
-                if make_val == "BMW" and float(rng_val) > 100:
-                    c += 1
+                rng = float(cells[b"electric range"][0].value.decode("utf-8").strip())
             except:
-                pass
-    return str(c)
+                continue
+            if make_val == "BMW" and rng > 100:
+                count += 1
+    return str(count)
 
 @app.route("/tesla-owners")
 def tesla_owners():
     table = get_table()
-    c = 0
+    count = 0
     for row in table.read_rows():
-        if "ev_info" in row.cells and "ev_info" in row.cells["ev_info"]:
-            raw = row.cells["ev_info"]["ev_info"][0].value.decode("utf-8")
-            data = ast.literal_eval(raw)
-            make_val = data.get("make", "").strip().upper()
-            city_val = data.get("city", "").strip().upper()
+        cells = row.cells.get("ev_info", {})
+        if b"make" in cells and b"city" in cells:
+            make_val = cells[b"make"][0].value.decode("utf-8").strip().upper()
+            city_val = cells[b"city"][0].value.decode("utf-8").strip().upper()
             if make_val == "TESLA" and city_val == "SEATTLE":
-                c += 1
-    return str(c)
+                count += 1
+    return str(count)
 
 @app.route("/update")
 def update():
     table = get_table()
-    row_key = "257246118".encode("utf-8")
-    stored = table.read_row(row_key)
-    if stored and "ev_info" in stored.cells and "ev_info" in stored.cells["ev_info"]:
-        raw = stored.cells["ev_info"]["ev_info"][0].value.decode("utf-8")
-        data = ast.literal_eval(raw)
-        data["electric range"] = "200"
-        new_val = str(data)
-        r = table.direct_row(row_key)
-        r.set_cell("ev_info", "ev_info", new_val.encode("utf-8"))
-        r.commit()
+    bt_row = table.direct_row(b"257246118")
+    bt_row.set_cell("ev_info", "electric range", b"200")
+    bt_row.commit()
     return '"Success"'
 
 @app.route("/delete")
@@ -117,24 +107,25 @@ def delete():
     table = get_table()
     to_delete = []
     for row in table.read_rows():
-        if "ev_info" in row.cells and "ev_info" in row.cells["ev_info"]:
-            raw = row.cells["ev_info"]["ev_info"][0].value.decode("utf-8")
-            data = ast.literal_eval(raw)
+        cells = row.cells.get("ev_info", {})
+        if b"model year" in cells:
             try:
-                if int(data.get("model year", "0")) < 2014:
-                    to_delete.append(row.row_key)
+                year = int(cells[b"model year"][0].value.decode("utf-8").strip())
             except:
-                pass
-    for rk in to_delete:
-        r = table.direct_row(rk)
+                continue
+            if year < 2014:
+                to_delete.append(row.row_key)
+    for key in to_delete:
+        r = table.direct_row(key)
         r.delete()
         r.commit()
-    c = 0
+    count = 0
     for _ in table.read_rows():
-        c += 1
-    return str(c)
+        count += 1
+    return str(count)
 
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=80)
+
 
 
